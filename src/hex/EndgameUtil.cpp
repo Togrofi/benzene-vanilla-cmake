@@ -129,17 +129,17 @@ HexPoint MostOverlappingMove(const CarrierList& carriers,
     for (CarrierList::Iterator it(carriers); it; ++it)
     {
         if ((it.Carrier() & intersectSmallest).none())
-	    break;
-	intersectSmallest &= it.Carrier();
+            break;
+        intersectSmallest &= it.Carrier();
     }
     LogFine() << "Intersection of smallest set is:\n"
-	      << HexPointUtil::ToString(intersectSmallest) << '\n';
+              << HexPointUtil::ToString(intersectSmallest) << '\n';
     
     // remove as many inferior moves as possible from this intersection
     TightenMoveBitset(intersectSmallest, inf);
     
     LogFine() << "After elimination of inferior cells:\n"
-	      << HexPointUtil::ToString(intersectSmallest) << '\n';
+              << HexPointUtil::ToString(intersectSmallest) << '\n';
     
     // determine which of the remaining cells performs best with
     // regards to other connections
@@ -147,9 +147,9 @@ HexPoint MostOverlappingMove(const CarrierList& carriers,
     memset(numHits, 0, sizeof(numHits));
     for (CarrierList::Iterator it(carriers); it; ++it)
     {
-	for (int i = 0; i < BITSETSIZE; i++) 
-	    if (intersectSmallest.test(i) && it.Carrier().test(i))
-		numHits[i]++;
+        for (int i = 0; i < BITSETSIZE; i++)
+            if (intersectSmallest.test(i) && it.Carrier().test(i))
+                numHits[i]++;
     }
     
     int curBestMove = -1;
@@ -158,10 +158,10 @@ HexPoint MostOverlappingMove(const CarrierList& carriers,
     {
 	if (numHits[i] > curMostHits) 
         {
-	    BenzeneAssert(intersectSmallest.test(i));
-	    curMostHits = numHits[i];
-	    curBestMove = i;
-	}
+            BenzeneAssert(intersectSmallest.test(i));
+            curMostHits = numHits[i];
+            curBestMove = i;
+        }
     }
     
     if (curMostHits == 0)

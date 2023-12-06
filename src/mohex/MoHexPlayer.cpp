@@ -97,7 +97,8 @@ void MoHexPlayer::CopySettingsFrom(const MoHexPlayer& other)
 
 HexPoint MoHexPlayer::Search(const HexState& state, const Game& game,
                              HexBoard& brd, const bitset_t& given_to_consider,
-                             double maxTime, double& score)
+                             double maxTime, double& score,
+                             std::vector<std::pair<SgMove, double> >* moveProbs)
 {
     BenzeneAssert(!brd.GetGroups().IsGameOver());
     HexColor color = state.ToPlay();   
@@ -160,7 +161,7 @@ HexPoint MoHexPlayer::Search(const HexState& state, const Game& game,
     std::vector<SgMove> rootFilter;
     m_search.SetBoard(brd);
     score = m_search.Search(m_max_games, maxTime, sequence,
-                            rootFilter, initTree, 0);
+                            rootFilter, initTree, 0, moveProbs);
 
     // Output stats
     std::ostringstream os;
@@ -172,6 +173,12 @@ HexPoint MoHexPlayer::Search(const HexState& state, const Game& game,
     for (std::size_t i = 0; i < sequence.size(); i++)
         os << ' ' << MoHexUtil::MoveString(sequence[i]);
     os << '\n';
+    if(moveProbs!=0){
+        for(std::pair<SgMove, double> move_score: *moveProbs){
+            os<<static_cast<HexPoint>(move_score.first)<<"@"<<move_score.second<<"\t";
+        }
+        os<<"\n";
+    }
     m_search_statistics = os.str();
     LogInfo() << m_search_statistics << '\n';
 

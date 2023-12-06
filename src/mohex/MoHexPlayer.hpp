@@ -138,7 +138,8 @@ protected:
     /** Generates a move in the given gamestate using uct. */
     HexPoint Search(const HexState& state, const Game& game,
                     HexBoard& brd, const bitset_t& consider,
-                    double maxTime, double& score);
+                    double maxTime, double& score,
+                    std::vector<std::pair<SgMove, double> >* moveProbs=0);
 
     bool PerformPreSearch(HexBoard& brd, HexColor color, bitset_t& consider, 
                           double maxTime, PointSequence& winningSequence);

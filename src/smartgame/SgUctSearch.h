@@ -595,7 +595,8 @@ public:
                       const std::vector<SgMove>& rootFilter
                       = std::vector<SgMove>(),
                       SgUctTree* initTree = 0,
-                      SgUctEarlyAbortParam* earlyAbort = 0);
+                      SgUctEarlyAbortParam* earlyAbort = 0,
+                      std::vector<std::pair<SgMove, SgUctValue> >* moveProbs=0);
 
     /** Do a one-ply Monte Carlo search instead of the UCT search.
         @param maxGames
@@ -612,11 +613,13 @@ public:
         @return The best child or 0 if no child nodes exists. */
     const SgUctNode*
     FindBestChild(const SgUctNode& node, SgUctMoveSelect moveSelect,
-                  const std::vector<SgMove>* excludeMoves = 0) const;
+                  const std::vector<SgMove>* excludeMoves = 0,
+                  std::vector<std::pair<SgMove, SgUctValue> >* moveProbs=0) const;
 
     /** Extract sequence of best moves from root node.
         @param[out] sequence The resulting sequence. */
-    void FindBestSequence(std::vector<SgMove>& sequence) const;
+    void FindBestSequence(std::vector<SgMove>& sequence,
+                          std::vector<std::pair<SgMove, SgUctValue> >* moveProbs=0) const;
 
     /** Return the bound of a move.
         This is the bound that was used for move selection. It can be the

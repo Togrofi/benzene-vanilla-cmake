@@ -26,7 +26,7 @@ BenzenePlayer::~BenzenePlayer()
 /** @bug Subtract time spent to here from max_time after each step. */
 HexPoint BenzenePlayer::GenMove(const HexState& state, const Game& game, 
                                 HexBoard& brd, double maxTime, 
-                                double& score)
+                                double& score, std::vector<std::pair<SgMove, double> >* moveProbs)
 {
     HexPoint move = INVALID_POINT;
     
@@ -47,7 +47,7 @@ HexPoint BenzenePlayer::GenMove(const HexState& state, const Game& game,
         return move;
 
     LogInfo() << "Best move cannot be determined, must search state.\n";
-    return Search(state, game, brd, consider, maxTime, score);
+    return Search(state, game, brd, consider, maxTime, score, moveProbs);
 }
 
 /** Finds inferior cells, builds vcs. Sets moves to consider to all
@@ -60,13 +60,13 @@ HexPoint BenzenePlayer::InitSearch(HexBoard& brd, HexColor color,
 				   double& score)
 {
     // Resign if the game is already over
-    Groups groups;
-    GroupBuilder::Build(brd.GetPosition(), groups);
-    if (groups.IsGameOver()) 
-    {
-        score = IMMEDIATE_LOSS;
-        return RESIGN;
-    }
+    // Groups groups;
+    // GroupBuilder::Build(brd.GetPosition(), groups);
+    // if (groups.IsGameOver())
+    // {
+    //     score = IMMEDIATE_LOSS;
+    //     return RESIGN;
+    // }
     StoneBoard original(brd.GetPosition());
     brd.ComputeAll(color,INVALID_POINT); // the fillin is added to brd
     m_fillinCausedWin = false;

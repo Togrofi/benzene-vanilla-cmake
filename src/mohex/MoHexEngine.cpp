@@ -15,6 +15,7 @@
 #include "NeighborTracker.hpp"
 #include "Misc.hpp"
 #include "Move.hpp"
+#include <thread>
 
 using namespace benzene;
 
@@ -907,36 +908,132 @@ void MoHexEngine::FindTopMoves(HtpCommand& cmd)
             << '@' << std::fixed << std::setprecision(3) << scores[i];
 }
 
+//two arugments, color, number games, filename to save played games, [optional] opening_list
 void MoHexEngine::SelfPlay(HtpCommand& cmd)
 {
-    cmd.CheckNuArg(1);
-    std::size_t numGames = cmd.ArgMin<size_t>(0, 1);
-    StoneBoard board(m_game.Board());
-    Game game(board);
-    HexState state(board.Width());
+    cmd.CheckNuArg(3);
+    HexColor toplay_color = HtpUtil::ColorArg(cmd, 0);
+    std::size_t numGames = cmd.ArgMin<size_t>(1, 1);
+    std::string filename=cmd.Arg(2);
+    std::string playedGames;
+
+    //HexState state(board.Width());
+    int boardsize=m_game.Board().Width();
+
+    std::chrono::system_clock::time_point p_now = std::chrono::system_clock::now();
+    std::time_t t_now = std::chrono::system_clock::to_time_t(p_now);
+    std::string datestr= std::string(std::ctime(&t_now));
+    std::string::iterator ite;
+    for (ite = datestr.end()-1; ite != datestr.begin() && *ite == '\n';) ite--;
+    if (*ite != '\n') ite++;
+    datestr.erase(ite, datestr.end());
+
+    playedGames.append("#"+std::to_string(boardsize)+" x "+std::to_string(boardsize)+" Hex "+datestr+"\n");
+    int cnt_toplay_win=0;
     for (size_t i = 0; i < numGames; ++i)
     {
+
         LogInfo() << "*********** Game " << (i + 1) << " ***********\n";
+        StoneBoard board(m_game.Board());
+        Game game(board);
         game.NewGame();
-        state.Position() = game.Board();
-        state.SetToPlay(BLACK);
-        
-        HexPoint firstMove = BoardUtil::RandomEmptyCell(state.Position());
+        board.SetPositionOnlyPlayed(m_game.Board());
+        HexState state(board, toplay_color);
+        std::vector<std::pair<SgMove, double> > moveProbs;
+        std::vector<HexPoint> moveseq;
+        HexPoint firstMove;
+        double score;
+
+        if (game.Board().NumStones()<=0){
+            //starting from empyty board, first move is random
+            firstMove = BoardUtil::RandomEmptyCell(state.Position());
+        } else {
+            firstMove = m_player.GenMove(state, game, m_pe.SyncBoard(state.Position()), m_player.MaxTime(), score, &moveProbs);
+        }
         game.PlayMove(state.ToPlay(), firstMove);
         state.PlayMove(firstMove);
-
+        moveseq.push_back(firstMove);
+        for (Move move: m_game.History()){
+            if(move.Color() == BLACK){
+                playedGames.append("B["+HexPointUtil::ToString(move.Point())+"] ");
+            } else {
+                playedGames.append("W["+HexPointUtil::ToString(move.Point())+"] ");
+            }
+        }
+        if(toplay_color == BLACK){
+            playedGames.append("B["+HexPointUtil::ToString(firstMove)+"] ");
+        } else {
+            playedGames.append("W["+HexPointUtil::ToString(firstMove)+"] ");
+        }
         while (true)
         {
-            double score;
-            HexPoint move = m_player.GenMove(state, game,
-                                             m_pe.SyncBoard(state.Position()),
-                                             m_player.MaxTime(), score);
-            if (HexEvalUtil::IsWinOrLoss(score))
+            moveProbs.clear();
+            HexPoint move;
+            move = m_player.GenMove(state, game, m_pe.SyncBoard(state.Position()), m_player.MaxTime(), score, &moveProbs);
+            if(moveProbs.size()==0){
+                moveProbs.push_back(std::make_pair(move, 1.0));
+            }
+            if(state.ToPlay()==BLACK){
+                playedGames.append("B["+HexPointUtil::ToString(move)+"][");
+
+            } else {
+                playedGames.append("W["+HexPointUtil::ToString(move)+"][");
+            }
+            //only write those >0.0
+            for(int i=0;i<moveProbs.size();i++){
+                    std::pair<SgMove, double> move_score=moveProbs[i];
+                    HexPoint pointMove=static_cast<HexPoint>(move_score.first);
+                    std::stringstream precision_stream;
+                    precision_stream << std::fixed << std::setprecision(2) << move_score.second;
+                    if(move_score.second>=0.006) playedGames.append(HexPointUtil::ToString(pointMove)+":"+precision_stream.str()+";");
+            }
+            playedGames.append("] ");
+            moveseq.push_back(move);
+            //write the played moves
+            if (HexEvalUtil::IsWinOrLoss(score)){
+                //The score in the data is w.r.t the player to play next!
+                if(HexEvalUtil::IsWin(score)){
+                    score=-1.0;
+                    if(state.ToPlay() == toplay_color){
+                        cnt_toplay_win += 1;
+                    }
+                } else if (HexEvalUtil::IsLoss(score)){
+                    score=1.0;
+                    if(state.ToPlay() == !toplay_color){
+                        cnt_toplay_win += 1;
+                    }
+                } else {
+                    BenzeneAssertShutdown("SHOULD Not Happen! Fatal error!", "MoHexEngine.cpp", 994, "SelfPlay");
+                }
+                LogInfo()<<"res: "<<score<<"\n";
+                playedGames.append(std::to_string(score)+"\n");
                 break;
+            }
             game.PlayMove(state.ToPlay(), move);
             state.PlayMove(move);
         }
-    }    
+    }
+    //This is a bit Hack!
+    std::string tmp_name="./tmp_selfplay_lock.txt";
+    std::ifstream tmpin(tmp_name);
+    int cnt=0;
+    while(tmpin.good() && cnt<10){
+        LogInfo() << "locked. wait 5s to write played games to "<<filename<<"\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        cnt++;
+    }
+    if(cnt>=10) LogInfo() <<"Not writing because of "<<tmp_name<<" Lock!\n";
+    std::ofstream tmp_out(tmp_name);
+
+    std::ofstream outfile;
+    outfile.open(filename, std::ios_base::app);
+    outfile<<playedGames;
+    outfile.flush();
+    outfile.close();
+
+    tmp_out.close();
+    std::remove(tmp_name.c_str());
+    cmd <<toplay_color<<" won "<<cnt_toplay_win<<"/"<<numGames<<"\n";
 }
 
 //----------------------------------------------------------------------------

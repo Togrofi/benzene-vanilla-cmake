@@ -519,12 +519,14 @@ void SgUctSearch::ExpandNode(SgUctThreadState& state, const SgUctNode& node)
 const SgUctNode*
 SgUctSearch::FindBestChild(const SgUctNode& node,
                            SgUctMoveSelect moveSelect,
-                           const vector<SgMove>* excludeMoves) const
+                           const vector<SgMove>* excludeMoves,
+                           std::vector<std::pair<SgMove, SgUctValue> >* moveProbs) const
 {
     if (! node.HasChildren())
         return 0;
     const SgUctNode* bestChild = 0;
     SgUctValue bestValue = 0;
+    SgUctValue cum_sum=0;
     for (SgUctChildIterator it(m_tree, node); it; ++it)
     {
         const SgUctNode& child = *it;
@@ -568,22 +570,93 @@ SgUctSearch::FindBestChild(const SgUctNode& node,
             SG_ASSERT(false);
             value = SG_UCTMOVESELECT_VALUE;
         }
+        cum_sum = cum_sum + pow(value, 1.0);
         if (bestChild == 0 || value > bestValue)
         {
             bestChild = &child;
             bestValue = value;
         }
     }
-    return bestChild;
+    if (moveProbs == 0) {
+        return bestChild;
+    }
+
+    float cum_sum2=0.0;
+    float rand_num= ((float) rand() / (RAND_MAX *1.0f));
+    const SgUctNode* selectedChild = 0;
+    for (SgUctChildIterator it(m_tree, node); it; ++it)
+    {
+        const SgUctNode& child = *it;
+        if (excludeMoves != 0)
+        {
+            vector<SgMove>::const_iterator begin = excludeMoves->begin();
+            vector<SgMove>::const_iterator end = excludeMoves->end();
+            if (find(begin, end, child.Move()) != end)
+                continue;
+        }
+        if (  ! child.HasMean()
+              && ! (  (  moveSelect == SG_UCTMOVESELECT_BOUND
+                         || moveSelect == SG_UCTMOVESELECT_ESTIMATE
+                      )
+                      && m_rave
+                      && child.HasRaveValue()
+        )
+                )
+            continue;
+        if (child.IsProvenLoss()) // Always choose winning move!
+        {
+            bestChild = &child;
+            break;
+        }
+        SgUctValue value;
+        switch (moveSelect)
+        {
+            case SG_UCTMOVESELECT_VALUE:
+                value = InverseEstimate((SgUctValue)child.Mean());
+                break;
+            case SG_UCTMOVESELECT_COUNT:
+                value = child.MoveCount();
+                break;
+            case SG_UCTMOVESELECT_BOUND:
+                value = GetBound(m_rave, node, child);
+                break;
+            case SG_UCTMOVESELECT_ESTIMATE:
+                value = GetValueEstimate(m_rave, child);
+                break;
+            default:
+                SG_ASSERT(false);
+                value = SG_UCTMOVESELECT_VALUE;
+        }
+        float prob=(float) (pow(value, 1.0)/cum_sum);
+        cum_sum2 =cum_sum2 + prob;
+        if(moveProbs!=0) moveProbs->push_back(std::make_pair(child.Move(), prob));
+        if(selectedChild ==0 && cum_sum2>=rand_num){
+            selectedChild = &child;
+        }
+        if (bestChild == 0 || value > bestValue)
+        {
+            bestChild = &child;
+            bestValue = value;
+        }
+    }
+
+    if(selectedChild==0)
+        return bestChild;
+    else
+        return selectedChild;
 }
 
-void SgUctSearch::FindBestSequence(vector<SgMove>& sequence) const
+void SgUctSearch::FindBestSequence(vector<SgMove>& sequence,
+                                   std::vector<std::pair<SgMove, SgUctValue> >* moveProbs) const
 {
     sequence.clear();
     const SgUctNode* current = &m_tree.Root();
+    bool atRoot=true;
     while (true)
     {
-        current = FindBestChild(*current, m_moveSelect);
+        if(atRoot) current = FindBestChild(*current, m_moveSelect, 0, moveProbs);
+        else current = FindBestChild(*current, m_moveSelect); //only the root level select with dithering
+        atRoot=false;
         if (current == 0)
             break;
         sequence.push_back(current->Move());
@@ -1227,7 +1300,8 @@ SgUctValue SgUctSearch::Search(SgUctValue maxGames, double maxTime,
                                vector<SgMove>& sequence,
                                const vector<SgMove>& rootFilter,
                                SgUctTree* initTree,
-                               SgUctEarlyAbortParam* earlyAbort)
+                               SgUctEarlyAbortParam* earlyAbort,
+                               std::vector<std::pair<SgMove, SgUctValue> >* moveProbs)
 {
     m_timer.Start();
     m_rootFilter = rootFilter;
@@ -1284,7 +1358,7 @@ SgUctValue SgUctSearch::Search(SgUctValue maxGames, double maxTime,
         m_statistics.m_gamesPerSecond = GamesPlayed() / m_statistics.m_time;
     if (m_logGames)
         m_log.close();
-    FindBestSequence(sequence);
+    FindBestSequence(sequence, moveProbs);
     return (m_tree.Root().MoveCount() > 0) ? (SgUctValue)m_tree.Root().Mean() : (SgUctValue)0.5;
 }
 
